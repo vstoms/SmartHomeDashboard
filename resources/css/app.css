@@ -1,0 +1,106 @@
+@import 'tailwindcss';
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+/* GridStack base styles */
+.grid-stack {
+    min-height: 200px;
+}
+
+.grid-stack-item-content {
+    inset: 8px;
+    border-radius: 1rem;
+    overflow: hidden;
+}
+
+.grid-stack-item-content > .device-card,
+.grid-stack-item-content > .flow-card {
+    height: 100%;
+    width: 100%;
+    border-radius: 1rem;
+    box-sizing: border-box;
+}
+
+/* Edit mode styles */
+.grid-stack.edit-mode .grid-stack-item-content {
+    outline: 2px dashed rgba(59, 130, 246, 0.6);
+    outline-offset: 0;
+}
+
+.grid-stack.edit-mode .grid-stack-item:hover .grid-stack-item-content {
+    outline-color: rgba(59, 130, 246, 1);
+}
+
+/* Resize handles */
+.grid-stack-item > .ui-resizable-handle {
+    background: transparent;
+    z-index: 100;
+}
+
+.grid-stack.edit-mode .grid-stack-item > .ui-resizable-se {
+    width: 24px;
+    height: 24px;
+    right: 12px;
+    bottom: 12px;
+    background: rgba(59, 130, 246, 0.9);
+    border-radius: 6px;
+    cursor: se-resize;
+}
+
+.grid-stack.edit-mode .grid-stack-item > .ui-resizable-se::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid white;
+    border-bottom: 2px solid white;
+}
+
+/* Placeholder when dragging */
+.grid-stack-placeholder > .placeholder-content {
+    background: rgba(59, 130, 246, 0.15);
+    border: 2px dashed rgba(59, 130, 246, 0.5);
+    border-radius: 1rem;
+    inset: 8px;
+}
+
+/* Disable pointer events on cards during edit mode */
+.grid-stack.edit-mode .device-card,
+.grid-stack.edit-mode .flow-card {
+    pointer-events: none;
+}
+
+.grid-stack.edit-mode .grid-stack-item-content {
+    cursor: move;
+}
+
+/* Edit buttons on cards */
+.grid-stack-item .edit-item-buttons {
+    display: none;
+}
+
+.grid-stack.edit-mode .grid-stack-item .edit-item-buttons {
+    display: flex;
+    pointer-events: auto;
+}
+
+/* Animation for dragging */
+.grid-stack-item.ui-draggable-dragging {
+    z-index: 1000;
+}
+
+.grid-stack-item.ui-draggable-dragging > .grid-stack-item-content {
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+    transform: scale(1.02);
+}

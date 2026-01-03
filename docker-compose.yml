@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    container_name: homey-dashboard
+    ports:
+      - "${PORT:-8080}:80"
+    volumes:
+      - ./data:/var/www/html/database
+    environment:
+      - APP_NAME=Homey Dashboard
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - APP_URL=http://localhost:${PORT:-8080}
+    restart: unless-stopped
