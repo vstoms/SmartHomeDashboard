@@ -27,7 +27,7 @@ class HomeyApiService
         return Http::withHeaders([
             'Authorization' => 'Bearer ' . $this->settings->token,
             'Content-Type' => 'application/json',
-        ])->timeout(10)->baseUrl($this->baseUrl);
+        ])->timeout(5)->connectTimeout(3)->baseUrl($this->baseUrl);
     }
 
     // === DEVICES ===

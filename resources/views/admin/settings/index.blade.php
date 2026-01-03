@@ -97,12 +97,18 @@
 <script>
 document.getElementById('test-connection').addEventListener('click', async function() {
     const result = document.getElementById('test-result');
+    const ipAddress = document.querySelector('input[name="ip_address"]').value;
+    const token = document.querySelector('textarea[name="token"]').value;
+
     result.classList.remove('hidden', 'bg-green-100', 'bg-red-100');
     result.classList.add('bg-gray-100');
     result.innerHTML = '<span class="text-gray-600">Testing connection to Homey...</span>';
 
     try {
-        const response = await axios.post('{{ route("admin.settings.test") }}');
+        const response = await axios.post('{{ route("admin.settings.test") }}', {
+            ip_address: ipAddress,
+            token: token
+        });
         if (response.data.success) {
             result.classList.remove('bg-gray-100');
             result.classList.add('bg-green-100');
@@ -110,7 +116,7 @@ document.getElementById('test-connection').addEventListener('click', async funct
         } else {
             result.classList.remove('bg-gray-100');
             result.classList.add('bg-red-100');
-            result.innerHTML = '<span class="text-red-700">Connection failed. Check your IP address and token.</span>';
+            result.innerHTML = `<span class="text-red-700">${response.data.message || 'Connection failed. Check your IP address and token.'}</span>`;
         }
     } catch (e) {
         result.classList.remove('bg-gray-100');

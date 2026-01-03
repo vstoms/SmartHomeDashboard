@@ -12,8 +12,6 @@
     $hasThermostat = isset($capabilities['target_temperature']);
 @endphp
 
-<!-- DEBUG: settings={{ json_encode($settings) }} displayCaps={{ json_encode($displayCaps) }} -->
-
 <div class="device-card bg-gray-800 rounded-2xl p-4 flex flex-col overflow-hidden transition-all duration-200 hover:bg-gray-750 active:scale-95"
      data-device-id="{{ $item->homey_id }}"
      data-item-id="{{ $item->id }}"
