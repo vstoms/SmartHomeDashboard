@@ -13,6 +13,30 @@ class DashboardController {
         this.isEditMode = false;
         this.originalLayout = null;
 
+        // Search configuration
+        this.searchConfig = {
+            placeholder: 'Search devices and flows...',
+            scope: 'all', // 'all', 'devices', 'flows'
+            minChars: 1,
+            debounceMs: 150,
+            highlightMatches: true,
+            caseSensitive: false,
+            autoSuggest: {
+                enabled: true,
+                maxSuggestions: 5,
+                showRecent: true,
+                recentLimit: 3
+            }
+        };
+
+        // Search state
+        this.searchState = {
+            query: '',
+            results: { devices: [], flows: [] },
+            recentSearches: [],
+            allItems: { devices: [], flows: [] }
+        };
+
         if (this.gridElement) {
             this.init();
         }
@@ -22,14 +46,20 @@ class DashboardController {
         this.initGridStack();
         this.setupDeviceCards();
         this.setupFlowCards();
+        this.setupMultiSwitchCards();
         this.setupEditMode();
         this.setupAddItemsPanel();
         this.setupRemoveButtons();
         this.setupConfigureButtons();
         this.setupConfigureModal();
+        this.setupDeviceGroupModal();
+        this.setupSearch();
+        this.loadRecentSearches();
         this.loadInitialStates();
         this.startPolling();
         this.currentConfigureItemId = null;
+        this.currentConfigureGroupId = null;
+        this.allDevicesForGroup = [];
     }
 
     initGridStack() {
@@ -118,13 +148,470 @@ class DashboardController {
     hideAddItemsPanel() {
         const panel = document.getElementById('add-items-panel');
         const mainContent = document.getElementById('main-content');
+        const searchInput = document.getElementById('items-search');
+        
         if (panel) {
             panel.classList.add('translate-x-full');
         }
         if (mainContent) {
             mainContent.style.marginRight = '';
         }
+        
+        // Clear search when closing panel
+        if (searchInput) {
+            searchInput.value = '';
+            this.clearSearch();
+        }
     }
+
+    // ==================== SEARCH FUNCTIONALITY ====================
+
+    setupSearch() {
+        const searchInput = document.getElementById('items-search');
+        const clearBtn = document.getElementById('clear-search');
+        const filterBtns = document.querySelectorAll('.search-filter-btn');
+        
+        if (!searchInput) return;
+        
+        // Debounced search handler
+        let debounceTimer;
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.trim();
+            
+            // Show/hide clear button
+            if (clearBtn) {
+                clearBtn.classList.toggle('hidden', query.length === 0);
+            }
+            
+            // Debounce search
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                this.performSearch(query);
+            }, this.searchConfig.debounceMs);
+            
+            // Show auto-suggest if enabled
+            if (this.searchConfig.autoSuggest.enabled && query.length >= this.searchConfig.minChars) {
+                this.showAutoSuggest(query);
+            } else {
+                this.hideAutoSuggest();
+            }
+        });
+        
+        // Clear search
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                searchInput.value = '';
+                clearBtn.classList.add('hidden');
+                this.clearSearch();
+                searchInput.focus();
+            });
+        }
+        
+        // Scope filter buttons
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.setSearchScope(btn.dataset.scope);
+            });
+        });
+        
+        // Keyboard navigation for auto-suggest
+        searchInput.addEventListener('keydown', (e) => {
+            this.handleSearchKeyboard(e);
+        });
+        
+        // Close auto-suggest when clicking outside
+        document.addEventListener('click', (e) => {
+            const suggestContainer = document.getElementById('search-suggestions');
+            if (suggestContainer && !searchInput.contains(e.target) && !suggestContainer.contains(e.target)) {
+                this.hideAutoSuggest();
+            }
+        });
+    }
+
+    setSearchScope(scope) {
+        this.searchConfig.scope = scope;
+        
+        // Update UI
+        document.querySelectorAll('.search-filter-btn').forEach(btn => {
+            const isActive = btn.dataset.scope === scope;
+            btn.classList.toggle('active', isActive);
+            
+            if (isActive) {
+                btn.classList.remove('bg-gray-700/50', 'text-gray-400', 'border-transparent');
+                btn.classList.add('bg-blue-600/20', 'text-blue-400', 'border-blue-500/30');
+            } else {
+                btn.classList.add('bg-gray-700/50', 'text-gray-400', 'border-transparent');
+                btn.classList.remove('bg-blue-600/20', 'text-blue-400', 'border-blue-500/30');
+            }
+        });
+        
+        // Update placeholder
+        this.updateSearchPlaceholder();
+        
+        // Re-run search with new scope
+        if (this.searchState.query) {
+            this.performSearch(this.searchState.query);
+        } else {
+            this.showAllItems();
+        }
+    }
+
+    updateSearchPlaceholder() {
+        const input = document.getElementById('items-search');
+        if (!input) return;
+        
+        const placeholders = {
+            'all': 'Search devices and flows...',
+            'devices': 'Search devices...',
+            'flows': 'Search flows...'
+        };
+        
+        input.placeholder = placeholders[this.searchConfig.scope] || placeholders.all;
+    }
+
+    performSearch(query) {
+        this.searchState.query = query;
+        
+        if (query.length < this.searchConfig.minChars) {
+            this.showAllItems();
+            return;
+        }
+        
+        const { devices, flows } = this.searchState.allItems;
+        const searchLower = this.searchConfig.caseSensitive ? query : query.toLowerCase();
+        
+        // Filter devices
+        const filteredDevices = devices.filter(device => {
+            const name = this.searchConfig.caseSensitive ? device.name : device.name.toLowerCase();
+            return name.includes(searchLower);
+        });
+        
+        // Filter flows
+        const filteredFlows = flows.filter(flow => {
+            const name = this.searchConfig.caseSensitive ? flow.name : flow.name.toLowerCase();
+            return name.includes(searchLower);
+        });
+        
+        // Apply scope filter
+        let results = { devices: [], flows: [] };
+        switch (this.searchConfig.scope) {
+            case 'devices':
+                results.devices = filteredDevices;
+                break;
+            case 'flows':
+                results.flows = filteredFlows;
+                break;
+            default:
+                results = { devices: filteredDevices, flows: filteredFlows };
+        }
+        
+        this.searchState.results = results;
+        this.renderSearchResults(results, query);
+        
+        // Save to recent searches
+        if (query.length >= 2) {
+            this.addToRecentSearches(query);
+        }
+    }
+
+    renderSearchResults(results, query) {
+        const devicesContainer = document.getElementById('available-devices');
+        const flowsContainer = document.getElementById('available-flows');
+        const devicesCount = document.getElementById('devices-count');
+        const flowsCount = document.getElementById('flows-count');
+        
+        // Update counts
+        if (devicesCount) devicesCount.textContent = results.devices.length;
+        if (flowsCount) flowsCount.textContent = results.flows.length;
+        
+        // Render devices
+        if (devicesContainer) {
+            if (this.searchConfig.scope === 'flows') {
+                // Hide devices section when filtering by flows only
+                devicesContainer.closest('div').parentElement.style.display = 'none';
+            } else {
+                devicesContainer.closest('div').parentElement.style.display = '';
+                if (results.devices.length === 0) {
+                    devicesContainer.innerHTML = query
+                        ? `<p class="search-no-results">No devices match "${this.escapeHtml(query)}"</p>`
+                        : '<p class="text-gray-500 text-sm py-2 text-center">All devices added!</p>';
+                } else {
+                    devicesContainer.innerHTML = results.devices.map(d => this.renderItemButton(d, 'device', query)).join('');
+                }
+            }
+        }
+        
+        // Render flows
+        if (flowsContainer) {
+            if (this.searchConfig.scope === 'devices') {
+                // Hide flows section when filtering by devices only
+                flowsContainer.closest('div').parentElement.style.display = 'none';
+            } else {
+                flowsContainer.closest('div').parentElement.style.display = '';
+                if (results.flows.length === 0) {
+                    flowsContainer.innerHTML = query
+                        ? `<p class="search-no-results">No flows match "${this.escapeHtml(query)}"</p>`
+                        : '<p class="text-gray-500 text-sm py-2 text-center">All flows added!</p>';
+                } else {
+                    flowsContainer.innerHTML = results.flows.map(f => this.renderItemButton(f, 'flow', query)).join('');
+                }
+            }
+        }
+        
+        // Re-attach click handlers
+        this.setupAddItemButtons();
+    }
+
+    renderItemButton(item, type, query) {
+        const name = this.searchConfig.highlightMatches && query
+            ? this.highlightMatch(item.name, query)
+            : this.escapeHtml(item.name);
+        
+        const colorClass = type === 'device' ? 'bg-blue-500' : 'bg-purple-500';
+        
+        return `
+            <button class="add-item-btn lux-list-item w-full text-left p-2 rounded-lg flex items-center gap-2 transition-colors"
+                    data-type="${type}" data-id="${item.id}" data-name="${this.escapeHtml(item.name)}">
+                <span class="w-2 h-2 rounded-full ${colorClass} flex-shrink-0"></span>
+                <span class="flex-1 truncate">${name}</span>
+                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+            </button>
+        `;
+    }
+
+    highlightMatch(text, query) {
+        if (!query) return this.escapeHtml(text);
+        
+        const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`(${escapedQuery})`, this.searchConfig.caseSensitive ? 'g' : 'gi');
+        
+        // First escape the text, then apply highlighting
+        const escapedText = this.escapeHtml(text);
+        const escapedQueryForReplace = this.escapeHtml(query);
+        const replaceRegex = new RegExp(`(${escapedQueryForReplace.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        
+        return escapedText.replace(replaceRegex, '<span class="search-highlight">$1</span>');
+    }
+
+    showAutoSuggest(query) {
+        const searchInput = document.getElementById('items-search');
+        let suggestContainer = document.getElementById('search-suggestions');
+        
+        // Create container if it doesn't exist
+        if (!suggestContainer) {
+            suggestContainer = document.createElement('div');
+            suggestContainer.id = 'search-suggestions';
+            suggestContainer.className = 'search-suggestions hidden';
+            searchInput.parentElement.style.position = 'relative';
+            searchInput.parentElement.appendChild(suggestContainer);
+        }
+        
+        const { devices, flows } = this.searchState.allItems;
+        const searchLower = query.toLowerCase();
+        const maxSuggestions = this.searchConfig.autoSuggest.maxSuggestions;
+        
+        // Get matching items based on scope
+        let suggestions = [];
+        
+        if (this.searchConfig.scope !== 'flows') {
+            devices.forEach(d => {
+                if (d.name.toLowerCase().includes(searchLower)) {
+                    suggestions.push({ ...d, type: 'device' });
+                }
+            });
+        }
+        
+        if (this.searchConfig.scope !== 'devices') {
+            flows.forEach(f => {
+                if (f.name.toLowerCase().includes(searchLower)) {
+                    suggestions.push({ ...f, type: 'flow' });
+                }
+            });
+        }
+        
+        // Limit suggestions
+        suggestions = suggestions.slice(0, maxSuggestions);
+        
+        if (suggestions.length === 0) {
+            this.hideAutoSuggest();
+            return;
+        }
+        
+        // Build HTML
+        let html = '';
+        
+        // Add recent searches if enabled and query is short
+        if (this.searchConfig.autoSuggest.showRecent &&
+            this.searchState.recentSearches.length > 0 &&
+            query.length <= 2) {
+            const matchingRecent = this.searchState.recentSearches
+                .filter(term => term.toLowerCase().includes(searchLower) && term.toLowerCase() !== searchLower)
+                .slice(0, this.searchConfig.autoSuggest.recentLimit);
+            
+            if (matchingRecent.length > 0) {
+                html += '<div class="search-section-header">Recent</div>';
+                html += matchingRecent.map(term => `
+                    <div class="search-suggestion-item recent" data-search-term="${this.escapeHtml(term)}">
+                        <svg class="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <span>${this.escapeHtml(term)}</span>
+                    </div>
+                `).join('');
+                html += '<div class="search-section-header">Suggestions</div>';
+            }
+        }
+        
+        // Render suggestions
+        html += suggestions.map((item, index) => `
+            <div class="search-suggestion-item" data-index="${index}" data-type="${item.type}" data-id="${item.id}" data-name="${this.escapeHtml(item.name)}">
+                <span class="suggestion-type ${item.type}">${item.type}</span>
+                <span class="flex-1 truncate">${this.highlightMatch(item.name, query)}</span>
+            </div>
+        `).join('');
+        
+        suggestContainer.innerHTML = html;
+        suggestContainer.classList.remove('hidden');
+        
+        // Setup click handlers
+        suggestContainer.querySelectorAll('.search-suggestion-item').forEach(item => {
+            item.addEventListener('click', () => {
+                if (item.dataset.searchTerm) {
+                    // Recent search clicked
+                    searchInput.value = item.dataset.searchTerm;
+                    this.performSearch(item.dataset.searchTerm);
+                } else {
+                    // Item clicked - add directly
+                    this.addItemFromSuggestion(item);
+                }
+                this.hideAutoSuggest();
+            });
+        });
+    }
+
+    hideAutoSuggest() {
+        const suggestContainer = document.getElementById('search-suggestions');
+        if (suggestContainer) {
+            suggestContainer.classList.add('hidden');
+        }
+    }
+
+    addItemFromSuggestion(suggestionEl) {
+        const type = suggestionEl.dataset.type;
+        const id = suggestionEl.dataset.id;
+        
+        // Find the actual button and trigger click
+        const btn = document.querySelector(`.add-item-btn[data-id="${id}"][data-type="${type}"]`);
+        if (btn) {
+            btn.click();
+        }
+    }
+
+    handleSearchKeyboard(e) {
+        const suggestContainer = document.getElementById('search-suggestions');
+        if (!suggestContainer || suggestContainer.classList.contains('hidden')) {
+            if (e.key === 'Escape') {
+                this.clearSearch();
+                document.getElementById('items-search').blur();
+            }
+            return;
+        }
+        
+        const items = suggestContainer.querySelectorAll('.search-suggestion-item');
+        const selectedIndex = Array.from(items).findIndex(item => item.classList.contains('selected'));
+        
+        switch (e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                const nextIndex = selectedIndex < items.length - 1 ? selectedIndex + 1 : 0;
+                items.forEach((item, i) => item.classList.toggle('selected', i === nextIndex));
+                items[nextIndex]?.scrollIntoView({ block: 'nearest' });
+                break;
+                
+            case 'ArrowUp':
+                e.preventDefault();
+                const prevIndex = selectedIndex > 0 ? selectedIndex - 1 : items.length - 1;
+                items.forEach((item, i) => item.classList.toggle('selected', i === prevIndex));
+                items[prevIndex]?.scrollIntoView({ block: 'nearest' });
+                break;
+                
+            case 'Enter':
+                e.preventDefault();
+                const selected = suggestContainer.querySelector('.search-suggestion-item.selected');
+                if (selected) {
+                    selected.click();
+                }
+                break;
+                
+            case 'Escape':
+                this.hideAutoSuggest();
+                break;
+        }
+    }
+
+    clearSearch() {
+        this.searchState.query = '';
+        this.hideAutoSuggest();
+        this.showAllItems();
+        
+        const clearBtn = document.getElementById('clear-search');
+        if (clearBtn) {
+            clearBtn.classList.add('hidden');
+        }
+    }
+
+    showAllItems() {
+        const { devices, flows } = this.searchState.allItems;
+        
+        // Reset scope visibility
+        const devicesSection = document.getElementById('available-devices')?.closest('div')?.parentElement;
+        const flowsSection = document.getElementById('available-flows')?.closest('div')?.parentElement;
+        
+        if (devicesSection) devicesSection.style.display = '';
+        if (flowsSection) flowsSection.style.display = '';
+        
+        this.renderSearchResults({ devices, flows }, '');
+    }
+
+    addToRecentSearches(query) {
+        const recent = this.searchState.recentSearches;
+        
+        // Remove if already exists
+        const index = recent.findIndex(term => term.toLowerCase() === query.toLowerCase());
+        if (index > -1) {
+            recent.splice(index, 1);
+        }
+        
+        // Add to beginning
+        recent.unshift(query);
+        
+        // Limit size
+        if (recent.length > 10) {
+            recent.pop();
+        }
+        
+        // Persist to localStorage
+        try {
+            localStorage.setItem('dashboard_recent_searches', JSON.stringify(recent));
+        } catch (e) {
+            console.warn('Could not save recent searches:', e);
+        }
+    }
+
+    loadRecentSearches() {
+        try {
+            const saved = localStorage.getItem('dashboard_recent_searches');
+            if (saved) {
+                this.searchState.recentSearches = JSON.parse(saved);
+            }
+        } catch (e) {
+            console.warn('Could not load recent searches:', e);
+        }
+    }
+
+    // ==================== END SEARCH FUNCTIONALITY ====================
 
     async loadAvailableItems() {
         const uuid = this.gridElement.dataset.dashboardUuid;
@@ -136,6 +623,16 @@ class DashboardController {
         try {
             const response = await axios.get(`/api/v1/dashboards/${uuid}/available-items`);
             const { devices, flows } = response.data;
+
+            // Store for search functionality
+            this.searchState.allItems = { devices, flows };
+
+            // Check if there's an active search
+            const searchInput = document.getElementById('items-search');
+            if (searchInput && searchInput.value.trim()) {
+                this.performSearch(searchInput.value.trim());
+                return;
+            }
 
             // Update counts
             if (devicesCount) devicesCount.textContent = devices.length;
@@ -871,6 +1368,411 @@ class DashboardController {
         if (this.pollTimer) {
             clearInterval(this.pollTimer);
             this.pollTimer = null;
+        }
+    }
+
+    // ==================== MULTI-SWITCH CARD FUNCTIONALITY ====================
+
+    setupMultiSwitchCards() {
+        // Initialize multi-switch card controllers
+        const multiSwitchCards = document.querySelectorAll('.multi-switch-card');
+        multiSwitchCards.forEach(card => {
+            this.initMultiSwitchCard(card);
+        });
+
+        // Setup group remove buttons
+        document.querySelectorAll('.remove-group-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.removeGroup(btn.dataset.groupId);
+            });
+        });
+
+        // Setup group configure buttons
+        document.querySelectorAll('.configure-group-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.openGroupConfigureModal(btn.dataset.groupId);
+            });
+        });
+    }
+
+    initMultiSwitchCard(card) {
+        // Setup sliders
+        const sliders = card.querySelectorAll('.multi-switch-range');
+        sliders.forEach(slider => {
+            const deviceId = slider.dataset.deviceId;
+            const row = slider.closest('.multi-switch-row');
+            
+            slider.addEventListener('input', (e) => {
+                if (this.isEditMode) return;
+                const value = parseInt(e.target.value);
+                this.updateMultiSwitchSliderVisuals(row, value);
+            });
+            
+            let debounceTimer;
+            slider.addEventListener('change', (e) => {
+                if (this.isEditMode) return;
+                const value = parseInt(e.target.value);
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    this.setCapability(deviceId, 'dim', value / 100);
+                }, 300);
+            });
+        });
+
+        // Setup toggles
+        const toggles = card.querySelectorAll('.multi-switch-toggle');
+        toggles.forEach(toggle => {
+            toggle.addEventListener('click', () => {
+                if (this.isEditMode) return;
+                const deviceId = toggle.dataset.deviceId;
+                const row = toggle.closest('.multi-switch-row');
+                const isOn = toggle.classList.contains('is-on');
+                const newValue = !isOn;
+                
+                toggle.classList.toggle('is-on', newValue);
+                toggle.setAttribute('aria-pressed', newValue ? 'true' : 'false');
+                
+                const powerBtn = row.querySelector('.multi-switch-power-btn');
+                if (powerBtn) {
+                    powerBtn.classList.toggle('is-on', newValue);
+                    powerBtn.setAttribute('aria-pressed', newValue ? 'true' : 'false');
+                }
+                
+                this.setCapability(deviceId, 'onoff', newValue);
+            });
+        });
+
+        // Setup power buttons
+        const powerBtns = card.querySelectorAll('.multi-switch-power-btn');
+        powerBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (this.isEditMode) return;
+                const deviceId = btn.dataset.deviceId;
+                const row = btn.closest('.multi-switch-row');
+                const isOn = btn.classList.contains('is-on');
+                const newValue = !isOn;
+                
+                btn.classList.toggle('is-on', newValue);
+                btn.setAttribute('aria-pressed', newValue ? 'true' : 'false');
+                
+                const toggle = row.querySelector('.multi-switch-toggle');
+                const slider = row.querySelector('.multi-switch-range');
+                const thumb = row.querySelector('.multi-switch-slider-thumb');
+                
+                if (toggle) {
+                    toggle.classList.toggle('is-on', newValue);
+                    toggle.setAttribute('aria-pressed', newValue ? 'true' : 'false');
+                }
+                
+                if (slider) {
+                    const newDimValue = newValue ? 100 : 0;
+                    slider.value = newDimValue;
+                    this.updateMultiSwitchSliderVisuals(row, newDimValue);
+                    this.setCapability(deviceId, 'dim', newDimValue / 100);
+                }
+                
+                if (thumb) {
+                    thumb.classList.toggle('is-on', newValue);
+                }
+                
+                this.setCapability(deviceId, 'onoff', newValue);
+            });
+        });
+    }
+
+    updateMultiSwitchSliderVisuals(row, value) {
+        const fill = row.querySelector('.multi-switch-slider-fill');
+        const thumb = row.querySelector('.multi-switch-slider-thumb');
+        const valueDisplay = row.querySelector('.multi-switch-value');
+        const powerBtn = row.querySelector('.multi-switch-power-btn');
+        
+        if (fill) fill.style.width = `${value}%`;
+        if (thumb) {
+            const position = Math.max(0, Math.min(value - 5, 95));
+            thumb.style.left = `calc(${position}% - 0px)`;
+            thumb.classList.toggle('is-on', value > 0);
+        }
+        if (valueDisplay) valueDisplay.textContent = `${value}%`;
+        if (powerBtn) {
+            powerBtn.classList.toggle('is-on', value > 0);
+            powerBtn.setAttribute('aria-pressed', value > 0 ? 'true' : 'false');
+        }
+    }
+
+    // ==================== DEVICE GROUP MODAL ====================
+
+    setupDeviceGroupModal() {
+        const createBtn = document.getElementById('create-group-btn');
+        const modal = document.getElementById('group-modal');
+        const closeBtn = document.getElementById('close-group-modal');
+        const cancelBtn = document.getElementById('group-cancel');
+        const saveBtn = document.getElementById('group-save');
+        const searchInput = document.getElementById('group-device-search');
+        const selectAllBtn = document.getElementById('group-select-all');
+
+        if (createBtn) {
+            createBtn.addEventListener('click', () => this.openGroupModal());
+        }
+
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => this.closeGroupModal());
+        }
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => this.closeGroupModal());
+        }
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', () => this.saveGroup());
+        }
+
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) this.closeGroupModal();
+            });
+        }
+
+        if (searchInput) {
+            searchInput.addEventListener('input', (e) => {
+                this.filterGroupDevices(e.target.value);
+            });
+        }
+
+        if (selectAllBtn) {
+            selectAllBtn.addEventListener('click', () => this.toggleSelectAllGroupDevices());
+        }
+    }
+
+    async openGroupModal(groupId = null) {
+        const modal = document.getElementById('group-modal');
+        const title = document.getElementById('group-modal-title');
+        const nameInput = document.getElementById('group-name');
+        const saveText = document.getElementById('group-save-text');
+        const devicesList = document.getElementById('group-devices-list');
+
+        this.currentConfigureGroupId = groupId;
+
+        if (groupId) {
+            title.textContent = 'Edit Device Group';
+            saveText.textContent = 'Save Changes';
+        } else {
+            title.textContent = 'Create Device Group';
+            saveText.textContent = 'Create Group';
+            nameInput.value = '';
+        }
+
+        // Load all devices
+        devicesList.innerHTML = '<p class="text-gray-500 text-sm py-2 text-center">Loading devices...</p>';
+        
+        try {
+            const response = await axios.get('/api/v1/devices');
+            
+            // Homey API returns devices as an object keyed by device ID
+            // Convert to array format
+            let devices = [];
+            const data = response.data;
+            
+            if (data && typeof data === 'object' && !Array.isArray(data)) {
+                // It's an object - convert to array
+                devices = Object.entries(data).map(([id, device]) => ({
+                    id,
+                    ...device
+                }));
+            } else if (Array.isArray(data)) {
+                devices = data;
+            } else if (data && data.devices) {
+                devices = Array.isArray(data.devices) ? data.devices : Object.entries(data.devices).map(([id, device]) => ({ id, ...device }));
+            }
+            
+            // Filter to only show devices with onoff or dim capabilities
+            this.allDevicesForGroup = devices.filter(d => {
+                const caps = d.capabilities || d.capabilitiesObj || {};
+                // Check if capabilities is an array (Homey format) or object
+                if (Array.isArray(caps)) {
+                    return caps.includes('onoff') || caps.includes('dim');
+                }
+                return caps.onoff !== undefined || caps.dim !== undefined;
+            });
+
+            let selectedDeviceIds = [];
+            
+            // If editing, load existing group data
+            if (groupId) {
+                const uuid = this.gridElement.dataset.dashboardUuid;
+                const groupResponse = await axios.get(`/api/v1/dashboards/${uuid}/groups/${groupId}`);
+                const group = groupResponse.data;
+                nameInput.value = group.name;
+                selectedDeviceIds = group.device_ids || [];
+            }
+
+            this.renderGroupDevicesList(this.allDevicesForGroup, selectedDeviceIds);
+            
+        } catch (error) {
+            console.error('Failed to load devices:', error);
+            devicesList.innerHTML = '<p class="text-red-400 text-sm py-2 text-center">Failed to load devices</p>';
+        }
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        nameInput.focus();
+    }
+
+    renderGroupDevicesList(devices, selectedIds = []) {
+        const devicesList = document.getElementById('group-devices-list');
+        
+        if (devices.length === 0) {
+            devicesList.innerHTML = '<p class="text-gray-500 text-sm py-2 text-center">No compatible devices found</p>';
+            return;
+        }
+
+        devicesList.innerHTML = devices.map(d => {
+            const caps = d.capabilities || d.capabilitiesObj || {};
+            // Check if capabilities is an array (Homey format) or object
+            let hasDim = false;
+            if (Array.isArray(caps)) {
+                hasDim = caps.includes('dim');
+            } else {
+                hasDim = caps.dim !== undefined;
+            }
+            const deviceType = hasDim ? 'dimmer' : 'switch';
+            const checked = selectedIds.includes(d.id) ? 'checked' : '';
+            
+            return `
+                <label class="group-device-item flex items-center gap-3 p-2 bg-gray-700/50 rounded-lg cursor-pointer hover:bg-gray-600/50 transition-colors"
+                       data-device-id="${d.id}" data-device-name="${this.escapeHtml(d.name).toLowerCase()}">
+                    <input type="checkbox" name="group_device" value="${d.id}" ${checked}
+                           class="rounded border-gray-500 text-amber-500 focus:ring-amber-500">
+                    <span class="flex-1 truncate">${this.escapeHtml(d.name)}</span>
+                    <span class="text-xs px-2 py-0.5 rounded ${hasDim ? 'bg-amber-500/20 text-amber-400' : 'bg-blue-500/20 text-blue-400'}">${deviceType}</span>
+                </label>
+            `;
+        }).join('');
+
+        // Update selected count
+        this.updateGroupSelectedCount();
+
+        // Add change listeners
+        devicesList.querySelectorAll('input[name="group_device"]').forEach(cb => {
+            cb.addEventListener('change', () => this.updateGroupSelectedCount());
+        });
+    }
+
+    filterGroupDevices(query) {
+        const items = document.querySelectorAll('.group-device-item');
+        const searchLower = query.toLowerCase();
+        
+        items.forEach(item => {
+            const name = item.dataset.deviceName || '';
+            const matches = name.includes(searchLower);
+            item.style.display = matches ? '' : 'none';
+        });
+    }
+
+    updateGroupSelectedCount() {
+        const countEl = document.getElementById('group-selected-count');
+        const checkboxes = document.querySelectorAll('input[name="group_device"]:checked');
+        if (countEl) {
+            countEl.textContent = `${checkboxes.length} device${checkboxes.length !== 1 ? 's' : ''} selected`;
+        }
+    }
+
+    toggleSelectAllGroupDevices() {
+        const checkboxes = document.querySelectorAll('input[name="group_device"]');
+        const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+        
+        checkboxes.forEach(cb => {
+            if (cb.closest('.group-device-item').style.display !== 'none') {
+                cb.checked = !allChecked;
+            }
+        });
+        
+        this.updateGroupSelectedCount();
+    }
+
+    closeGroupModal() {
+        const modal = document.getElementById('group-modal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        this.currentConfigureGroupId = null;
+        
+        // Clear search
+        const searchInput = document.getElementById('group-device-search');
+        if (searchInput) searchInput.value = '';
+    }
+
+    async saveGroup() {
+        const uuid = this.gridElement.dataset.dashboardUuid;
+        const name = document.getElementById('group-name').value.trim();
+        const selectedDevices = Array.from(document.querySelectorAll('input[name="group_device"]:checked'))
+            .map(cb => cb.value);
+
+        if (!name) {
+            this.showToast('Please enter a group name');
+            return;
+        }
+
+        if (selectedDevices.length === 0) {
+            this.showToast('Please select at least one device');
+            return;
+        }
+
+        try {
+            let response;
+            if (this.currentConfigureGroupId) {
+                // Update existing group
+                response = await axios.put(`/api/v1/dashboards/${uuid}/groups/${this.currentConfigureGroupId}`, {
+                    name,
+                    device_ids: selectedDevices
+                });
+            } else {
+                // Create new group
+                response = await axios.post(`/api/v1/dashboards/${uuid}/groups`, {
+                    name,
+                    device_ids: selectedDevices
+                });
+            }
+
+            if (response.data.success) {
+                this.closeGroupModal();
+                this.showToast(this.currentConfigureGroupId ? 'Group updated!' : 'Group created!');
+                
+                // Reload page to show new group
+                window.location.reload();
+            }
+        } catch (error) {
+            console.error('Failed to save group:', error);
+            this.showToast('Failed to save group');
+        }
+    }
+
+    async openGroupConfigureModal(groupId) {
+        await this.openGroupModal(groupId);
+    }
+
+    async removeGroup(groupId) {
+        if (!confirm('Remove this device group from the dashboard?')) {
+            return;
+        }
+
+        const uuid = this.gridElement.dataset.dashboardUuid;
+        const gridItem = document.querySelector(`[data-group-id="${groupId}"]`);
+
+        try {
+            const response = await axios.delete(`/api/v1/dashboards/${uuid}/groups/${groupId}`);
+
+            if (response.data.success) {
+                if (gridItem) {
+                    this.grid.removeWidget(gridItem);
+                }
+                this.showToast('Group removed');
+            }
+        } catch (error) {
+            console.error('Failed to remove group:', error);
+            this.showToast('Failed to remove group');
         }
     }
 }

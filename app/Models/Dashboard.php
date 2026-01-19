@@ -27,6 +27,11 @@ class Dashboard extends Model
         return $this->hasMany(DashboardItem::class)->orderBy('sort_order');
     }
 
+    public function deviceGroups(): HasMany
+    {
+        return $this->hasMany(DeviceGroup::class)->orderBy('sort_order');
+    }
+
     public function devices(): HasMany
     {
         return $this->items()->where('type', 'device');

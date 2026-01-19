@@ -33,5 +33,12 @@ Route::prefix('admin')->name('admin.')->group(function () {
     Route::post('settings/test', [AdminSettingsController::class, 'test'])->name('settings.test');
 });
 
+// Demo Routes
+Route::prefix('demo')->name('demo.')->group(function () {
+    Route::get('/multi-switch', function () {
+        return view('demo.multi-switch');
+    })->name('multi-switch');
+});
+
 // Redirect home to admin
 Route::redirect('/', '/admin/dashboards');
