@@ -56,14 +56,12 @@ class DashboardController {
             if (!this.isEditMode) {
                 this.enterEditMode();
                 editToggleText.textContent = 'Editing...';
-                editToggle.classList.add('bg-blue-600', 'hover:bg-blue-700');
-                editToggle.classList.remove('bg-gray-700', 'hover:bg-gray-600');
+                editToggle.classList.add('lux-button-primary');
                 editControls.classList.remove('translate-y-full');
             } else {
                 this.exitEditMode(false);
                 editToggleText.textContent = 'Edit Layout';
-                editToggle.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-                editToggle.classList.add('bg-gray-700', 'hover:bg-gray-600');
+                editToggle.classList.remove('lux-button-primary');
                 editControls.classList.add('translate-y-full');
             }
         });
@@ -76,8 +74,7 @@ class DashboardController {
             cancelBtn.addEventListener('click', () => {
                 this.exitEditMode(true);
                 editToggleText.textContent = 'Edit Layout';
-                editToggle.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-                editToggle.classList.add('bg-gray-700', 'hover:bg-gray-600');
+                editToggle.classList.remove('lux-button-primary');
                 editControls.classList.add('translate-y-full');
             });
         }
@@ -150,7 +147,7 @@ class DashboardController {
                     devicesContainer.innerHTML = '<p class="text-gray-500 text-sm py-2 text-center">All devices added!</p>';
                 } else {
                     devicesContainer.innerHTML = devices.map(d => `
-                        <button class="add-item-btn w-full text-left p-2 hover:bg-gray-700 rounded-lg flex items-center gap-2 transition-colors"
+                        <button class="add-item-btn lux-list-item w-full text-left p-2 rounded-lg flex items-center gap-2 transition-colors"
                                 data-type="device" data-id="${d.id}" data-name="${this.escapeHtml(d.name)}">
                             <span class="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0"></span>
                             <span class="flex-1 truncate">${this.escapeHtml(d.name)}</span>
@@ -168,7 +165,7 @@ class DashboardController {
                     flowsContainer.innerHTML = '<p class="text-gray-500 text-sm py-2 text-center">All flows added!</p>';
                 } else {
                     flowsContainer.innerHTML = flows.map(f => `
-                        <button class="add-item-btn w-full text-left p-2 hover:bg-gray-700 rounded-lg flex items-center gap-2 transition-colors"
+                        <button class="add-item-btn lux-list-item w-full text-left p-2 rounded-lg flex items-center gap-2 transition-colors"
                                 data-type="flow" data-id="${f.id}" data-name="${this.escapeHtml(f.name)}">
                             <span class="w-2 h-2 rounded-full bg-purple-500 flex-shrink-0"></span>
                             <span class="flex-1 truncate">${this.escapeHtml(f.name)}</span>
@@ -308,31 +305,37 @@ class DashboardController {
         editBtns.appendChild(removeBtn);
 
         if (item.type === 'device') {
-            content.innerHTML = `<div class="device-card bg-gray-800 rounded-2xl p-4 flex flex-col overflow-hidden transition-all duration-200 hover:bg-gray-750 active:scale-95"
+            content.innerHTML = `<div class="device-card lux-card rounded-2xl p-4 flex flex-col overflow-hidden transition-all duration-300 active:scale-95"
                      data-device-id="${item.homey_id}"
                      data-item-id="${item.id}"
                      data-display-capabilities="[]">
                     <div class="flex justify-between items-start gap-2 flex-shrink-0">
                         <div class="flex-1 min-w-0">
                             <h3 class="font-semibold text-base truncate">${this.escapeHtml(item.name)}</h3>
-                            <span class="device-status text-sm text-gray-400">--</span>
+                            <div class="device-status-row text-sm text-gray-300">
+                                <span class="status-dot" aria-hidden="true"></span>
+                                <span class="device-status">--</span>
+                            </div>
                         </div>
-                        <button class="toggle-btn w-14 h-8 rounded-full bg-gray-600 relative transition-colors flex-shrink-0 touch-manipulation"
+                        <button class="toggle-btn lux-toggle w-16 h-9 rounded-full relative flex-shrink-0 touch-manipulation"
                                 data-capability="onoff"
-                                aria-label="Toggle device">
-                            <span class="toggle-indicator absolute top-1 left-1 w-6 h-6 bg-white rounded-full transition-transform duration-200 shadow-md"></span>
+                                aria-label="Toggle device"
+                                aria-pressed="false">
+                            <span class="toggle-indicator absolute top-1 left-1 w-7 h-7 rounded-full transition-transform duration-200"></span>
                         </button>
                     </div>
                     <div class="flex-1"></div>
                 </div>`;
         } else {
-            content.innerHTML = `<div class="flow-card bg-purple-900/50 rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 hover:bg-purple-800/50 active:scale-95"
+            content.innerHTML = `<div class="flow-card lux-card lux-flow rounded-2xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 active:scale-95"
                      data-flow-id="${item.homey_id}">
-                    <svg class="w-8 h-8 text-purple-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div class="lux-flow-icon w-12 h-12 rounded-full flex items-center justify-center mb-3">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                    </svg>
+                        </svg>
+                    </div>
                     <h3 class="font-semibold text-sm">${this.escapeHtml(item.name)}</h3>
-                    <span class="flow-status text-xs text-gray-400 mt-1">Tap to run</span>
+                    <span class="flow-status text-xs text-purple-200 mt-1">Tap to run</span>
                 </div>`;
         }
 
@@ -604,8 +607,7 @@ class DashboardController {
             const editControls = document.getElementById('edit-controls');
 
             editToggleText.textContent = 'Edit Layout';
-            editToggle.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-            editToggle.classList.add('bg-gray-700', 'hover:bg-gray-600');
+            editToggle.classList.remove('lux-button-primary');
             editControls.classList.add('translate-y-full');
         } catch (error) {
             console.error('Failed to save layout:', error);
@@ -648,12 +650,15 @@ class DashboardController {
             if (capabilities.onoff !== undefined) {
                 const isOn = capabilities.onoff.value;
                 const toggleBtn = card.querySelector('.toggle-btn');
-                const indicator = card.querySelector('.toggle-indicator');
+                const statusDot = card.querySelector('.status-dot');
 
-                if (toggleBtn && indicator) {
-                    toggleBtn.classList.toggle('bg-blue-500', isOn);
-                    toggleBtn.classList.toggle('bg-gray-600', !isOn);
-                    indicator.style.transform = isOn ? 'translateX(24px)' : 'translateX(0)';
+                if (toggleBtn) {
+                    toggleBtn.classList.toggle('is-on', isOn);
+                    toggleBtn.setAttribute('aria-pressed', isOn ? 'true' : 'false');
+                }
+
+                if (statusDot) {
+                    statusDot.classList.toggle('is-on', isOn);
                 }
 
                 if (statusEl) {
@@ -664,10 +669,12 @@ class DashboardController {
             if (capabilities.dim !== undefined) {
                 const dimSlider = card.querySelector('[data-capability="dim"]');
                 const dimValue = card.querySelector('.dimmer-value');
+                const dimmerRing = card.querySelector('.lux-dimmer');
 
                 const percent = Math.round(capabilities.dim.value * 100);
                 if (dimSlider) dimSlider.value = percent;
                 if (dimValue) dimValue.textContent = `${percent}%`;
+                if (dimmerRing) dimmerRing.style.setProperty('--dimmer', percent);
             }
 
             if (capabilities.target_temperature !== undefined) {
@@ -739,7 +746,9 @@ class DashboardController {
                 dimSlider.addEventListener('input', (e) => {
                     if (this.isEditMode) return;
                     const dimValue = card.querySelector('.dimmer-value');
+                    const dimmerRing = card.querySelector('.lux-dimmer');
                     if (dimValue) dimValue.textContent = `${e.target.value}%`;
+                    if (dimmerRing) dimmerRing.style.setProperty('--dimmer', e.target.value);
 
                     clearTimeout(debounceTimer);
                     debounceTimer = setTimeout(() => {
@@ -789,14 +798,14 @@ class DashboardController {
     }
 
     async toggleDevice(deviceId, toggleBtn, card) {
-        const isCurrentlyOn = toggleBtn.classList.contains('bg-blue-500');
+        const isCurrentlyOn = toggleBtn.classList.contains('is-on');
         const newValue = !isCurrentlyOn;
-        const indicator = toggleBtn.querySelector('.toggle-indicator');
         const statusEl = card.querySelector('.device-status');
+        const statusDot = card.querySelector('.status-dot');
 
-        toggleBtn.classList.toggle('bg-blue-500', newValue);
-        toggleBtn.classList.toggle('bg-gray-600', !newValue);
-        if (indicator) indicator.style.transform = newValue ? 'translateX(24px)' : 'translateX(0)';
+        toggleBtn.classList.toggle('is-on', newValue);
+        toggleBtn.setAttribute('aria-pressed', newValue ? 'true' : 'false');
+        if (statusDot) statusDot.classList.toggle('is-on', newValue);
         if (statusEl) {
             const currentText = statusEl.textContent;
             const tempPart = currentText.includes('•') ? currentText.split('•')[1] : '';
@@ -805,9 +814,9 @@ class DashboardController {
 
         const success = await this.setCapability(deviceId, 'onoff', newValue);
         if (!success) {
-            toggleBtn.classList.toggle('bg-blue-500', !newValue);
-            toggleBtn.classList.toggle('bg-gray-600', newValue);
-            if (indicator) indicator.style.transform = !newValue ? 'translateX(24px)' : 'translateX(0)';
+            toggleBtn.classList.toggle('is-on', !newValue);
+            toggleBtn.setAttribute('aria-pressed', (!newValue) ? 'true' : 'false');
+            if (statusDot) statusDot.classList.toggle('is-on', !newValue);
             this.showToast('Failed to control device');
         }
     }

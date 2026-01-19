@@ -31,3 +31,7 @@ CLAUDE.md
 # Project exclude paths
 /storage/app/
 /storage/framework/
+
+#Codex AI
+/.codex
+AGENTS.md

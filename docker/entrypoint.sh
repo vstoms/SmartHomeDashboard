@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Ensure storage directories exist
-mkdir -p storage/framework/{sessions,views,cache} storage/logs bootstrap/cache
+mkdir -p storage/framework/sessions storage/framework/views storage/framework/cache storage/logs bootstrap/cache
 chown -R www-data:www-data storage bootstrap/cache
 
 # Ensure database directory and file exist

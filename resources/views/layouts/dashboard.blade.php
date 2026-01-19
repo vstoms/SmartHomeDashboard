@@ -13,7 +13,7 @@
         body { touch-action: manipulation; }
     </style>
 </head>
-<body class="bg-gray-900 text-white min-h-screen">
+<body class="lux-body text-white min-h-screen">
     @yield('content')
 </body>
 </html>

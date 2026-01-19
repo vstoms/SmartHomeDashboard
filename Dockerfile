@@ -38,7 +38,7 @@ WORKDIR /var/www/html
 COPY composer.json composer.lock ./
 
 # Create required directories before composer install
-RUN mkdir -p storage/framework/{sessions,views,cache} storage/logs bootstrap/cache database \
+RUN mkdir -p storage/framework/sessions storage/framework/views storage/framework/cache storage/logs bootstrap/cache database \
     && chown -R www-data:www-data storage bootstrap/cache database
 
 # Install PHP dependencies (ignore platform reqs for Alpine compatibility)
